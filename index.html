@@ -2,20 +2,21 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Cuphead: Floral Fury JS</title>
+    <title>Cuphead Boss Fight - Final Version</title>
     <style>
-        body { margin: 0; background: #111; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Georgia', serif; }
-        canvas { background: linear-gradient(#4a90e2, #2d5a27); border: 6px solid #333; box-shadow: 0 0 50px rgba(0,0,0,0.8); }
-        #hud { position: absolute; top: 20px; color: white; text-align: center; width: 800px; font-weight: bold; text-shadow: 2px 2px #000; z-index: 10; }
-        .phase-txt { font-style: italic; color: #ffcc00; font-size: 14px; }
+        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Arial Black', sans-serif; }
+        canvas { background: #2d5a27; border: 5px solid #fbff00; box-shadow: 0 0 40px rgba(255, 204, 0, 0.4); }
+        #ui { position: absolute; top: 20px; color: white; width: 800px; display: flex; justify-content: space-around; text-shadow: 2px 2px #000; pointer-events: none; }
+        .meter-bg { width: 150px; height: 15px; background: #333; border: 2px solid #fff; }
+        #special-bar { width: 0%; height: 100%; background: #00f2ff; transition: width 0.1s; }
     </style>
 </head>
 <body>
 
-<div id="hud">
-    HP: <span id="hp" style="color: #ff4d4d;">3</span> | 
-    BOSS: <span id="boss-hp" style="color: #ffcc00;">100</span>% <br>
-    <span id="phase-label" class="phase-txt">FASE 1: SEMENTES VIVAS</span>
+<div id="ui">
+    <div>HP: <span id="hp" style="color: #ff3e3e;">3</span></div>
+    <div>BOSS: <span id="boss-hp" style="color: #ffd700;">100</span>%</div>
+    <div>ESPECIAL (C): <div class="meter-bg"><div id="special-bar"></div></div></div>
 </div>
 <canvas id="game"></canvas>
 
@@ -25,7 +26,7 @@ const ctx = canvas.getContext('2d');
 canvas.width = 800;
 canvas.height = 450;
 
-const GRAVITY = 0.5;
+const GRAVITY = 0.4; // Gravidade mais leve
 const keys = {};
 
 window.addEventListener('keydown', e => keys[e.code] = true);
@@ -34,12 +35,13 @@ window.addEventListener('keyup', e => keys[e.code] = false);
 class Player {
     constructor() {
         this.x = 100; this.y = 300;
-        this.w = 30; this.h = 45;
+        this.w = 35; this.h = 50;
         this.vx = 0; this.vy = 0;
-        this.speed = 5;
-        this.jumpPower = -11;
+        this.speed = 6;
+        this.jumpPower = -12.5; // Pulo mais forte
         this.grounded = false;
         this.hp = 3;
+        this.specialMeter = 0;
         this.shootTimer = 0;
         this.invincibility = 0;
     }
@@ -58,6 +60,7 @@ class Player {
         this.x += this.vx;
         this.y += this.vy;
 
+        // Chão sólido
         if (this.y + this.h > canvas.height - 40) {
             this.y = canvas.height - 40 - this.h;
             this.vy = 0;
@@ -65,131 +68,93 @@ class Player {
         }
 
         if (this.x < 0) this.x = 0;
-        if (this.x > 500) this.x = 500; // Limite para não encostar no corpo do Boss
+        if (this.x > 500) this.x = 500;
         if (this.shootTimer > 0) this.shootTimer--;
         if (this.invincibility > 0) this.invincibility--;
     }
 
     draw() {
-        ctx.globalAlpha = this.invincibility % 2 === 0 ? 1 : 0.5;
-        ctx.fillStyle = '#3498db'; // Cuphead Azul (para variar)
+        ctx.save();
+        if (this.invincibility > 0) ctx.globalAlpha = 0.5;
+        ctx.fillStyle = '#ff0000'; // Corpo Cuphead
         ctx.fillRect(this.x, this.y, this.w, this.h);
-        ctx.fillStyle = 'white';
-        ctx.fillRect(this.x - 5, this.y - 10, this.w + 10, 15);
-        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#fff'; // Cabeça
+        ctx.fillRect(this.x - 5, this.y - 12, this.w + 10, 18);
+        ctx.restore();
     }
 }
 
 class Boss {
     constructor() {
-        this.x = 600; this.y = 120;
-        this.w = 130; this.h = 250;
+        this.x = 580; this.y = 80;
+        this.w = 180; this.h = 300;
         this.hp = 100;
-        this.phase = 1;
         this.attackTimer = 0;
-        this.state = 'idle'; // idle, lunging, shooting
-        this.color = '#ff9800';
     }
 
     update() {
         this.attackTimer++;
-
-        // Gerenciamento de Fases
-        if (this.hp <= 70 && this.phase === 1) {
-            this.phase = 2;
-            this.color = '#e67e22';
-            document.getElementById('phase-label').innerText = "FASE 2: ATAQUE DE PÓLEN";
-        }
-        if (this.hp <= 30 && this.phase === 2) {
-            this.phase = 3;
-            this.color = '#8e44ad';
-            document.getElementById('phase-label').innerText = "FASE 3: FÚRIA DAS VIDEIRAS";
-        }
-
-        // Lógica de Ataques por Fase
-        if (this.phase === 1 && this.attackTimer % 100 === 0) this.shootAtPlayer();
-        if (this.phase === 2 && this.attackTimer % 80 === 0) {
-            Math.random() > 0.5 ? this.shootAtPlayer() : this.lungeAttack();
-        }
-        if (this.phase === 3) {
-            if (this.attackTimer % 60 === 0) this.shootAtPlayer();
-            if (this.attackTimer % 120 === 0) this.vineAttack();
-        }
+        if (this.attackTimer % 70 === 0) this.shootLeaf();
     }
 
-    shootAtPlayer() {
-        // Atira direto na posição do jogador
-        const dx = player.x - this.x;
-        const dy = player.y - (this.y + 50);
-        const angle = Math.atan2(dy, dx);
-        bossProjectiles.push(new Projectile(this.x, this.y + 50, Math.cos(angle) * 6, Math.sin(angle) * 6, 'orange', 15));
-    }
-
-    lungeAttack() {
-        // O "Face Stretch" - Ataca a linha horizontal
-        this.state = 'lunging';
-        setTimeout(() => {
-            bossProjectiles.push(new Projectile(this.x, player.y, -12, 0, '#f1c40f', 40));
-            this.state = 'idle';
-        }, 500);
-    }
-
-    vineAttack() {
-        // Ataque de espinhos no chão
-        bossProjectiles.push(new Projectile(player.x, canvas.height - 40, 0, -5, '#27ae60', 30));
+    shootLeaf() {
+        // Atira folha que segue o jogador
+        const angle = Math.atan2(player.y - this.y - 100, player.x - this.x);
+        bossProjectiles.push(new Projectile(this.x, this.y + 100, Math.cos(angle) * 5, Math.sin(angle) * 5, '#46aa2d', 20));
     }
 
     draw() {
-        ctx.fillStyle = this.color;
-        // Cabeça da Flor
+        ctx.fillStyle = '#ff9100'; // Pétalas
         ctx.beginPath();
-        ctx.arc(this.x + 65, this.y + 60, 70, 0, Math.PI * 2);
+        ctx.arc(this.x + 90, this.y + 90, 85, 0, Math.PI * 2);
         ctx.fill();
-        // Rosto
-        ctx.fillStyle = 'yellow';
-        ctx.fillRect(this.x + 30, this.y + 40, 40, 40);
-        // Caule
-        ctx.fillStyle = '#2d5a27';
-        ctx.fillRect(this.x + 55, this.y + 130, 20, 300);
+        ctx.fillStyle = '#f7e442'; // Rosto
+        ctx.fillRect(this.x + 50, this.y + 50, 80, 80);
+        ctx.fillStyle = '#225a1f'; // Caule
+        ctx.fillRect(this.x + 80, this.y + 175, 25, 250);
     }
 }
 
 class Projectile {
-    constructor(x, y, vx, vy, color, size) {
+    constructor(x, y, vx, vy, color, size, isSuper = false) {
         this.x = x; this.y = y;
         this.vx = vx; this.vy = vy;
         this.color = color;
         this.size = size;
+        this.isSuper = isSuper;
     }
     update() { this.x += this.vx; this.y += this.vy; }
     draw() {
         ctx.fillStyle = this.color;
+        ctx.shadowBlur = this.isSuper ? 15 : 0;
+        ctx.shadowColor = this.color;
         ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.shadowBlur = 0;
     }
 }
 
-// Inicialização
 const player = new Player();
 const boss = new Boss();
-const playerBullets = [];
+const playerProjectiles = [];
 const bossProjectiles = [];
-// Plataformas em altura que o personagem alcança (Pulo = 120px aprox)
+
+// Plataformas em alturas acessíveis
 const platforms = [
-    {x: 80, y: 280, w: 90, h: 15},
-    {x: 230, y: 210, w: 90, h: 15},
-    {x: 380, y: 280, w: 90, h: 15}
+    {x: 70, y: 310, w: 100, h: 15},
+    {x: 220, y: 240, w: 100, h: 15},
+    {x: 370, y: 310, w: 100, h: 15}
 ];
 
-function checkCol(r1, r2) {
-    const r2w = r2.w || r2.size;
-    const r2h = r2.h || r2.size;
-    return r1.x < r2.x + r2w && r1.x + r1.w > r2.x && r1.y < r2.y + r2h && r1.y + r1.h > r2.y;
+function checkCol(a, b) {
+    const bw = b.w || b.size;
+    const bh = b.h || b.size;
+    return a.x < b.x + bw && a.x + a.w > b.x && a.y < b.y + bh && a.y + a.h > b.y;
 }
 
 function loop() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Chão
+    // Fundo/Grama
     ctx.fillStyle = '#1e3d14';
     ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
 
@@ -197,51 +162,66 @@ function loop() {
     ctx.fillStyle = '#ff69b4';
     platforms.forEach(p => {
         ctx.fillRect(p.x, p.y, p.w, p.h);
-        if (player.vy > 0 && checkCol(player, p) && (player.y + player.h) < p.y + 15) {
+        if (player.vy > 0 && checkCol(player, p) && (player.y + player.h) < p.y + 18) {
             player.y = p.y - player.h;
             player.vy = 0;
             player.grounded = true;
         }
     });
 
-    // Ataque Player
+    // ATAQUES PLAYER
     if (keys['KeyX'] && player.shootTimer === 0) {
-        playerBullets.push(new Projectile(player.x + player.w, player.y + 10, 12, 0, '#55ffff', 8));
-        player.shootTimer = 12;
+        playerProjectiles.push(new Projectile(player.x + player.w, player.y + 15, 12, 0, '#00f2ff', 10));
+        player.shootTimer = 10;
+    }
+    
+    // ESPECIAL (Tecla C)
+    if (keys['KeyC'] && player.specialMeter >= 100) {
+        playerProjectiles.push(new Projectile(player.x + player.w, player.y - 10, 15, 0, '#fff', 40, true));
+        player.specialMeter = 0;
+        document.getElementById('special-bar').style.width = '0%';
     }
 
     player.update();
     boss.update();
 
-    // Balas do Cuphead -> Boss
-    playerBullets.forEach((b, i) => {
-        b.update(); b.draw();
-        if (checkCol(b, boss)) {
-            boss.hp -= 1;
-            playerBullets.splice(i, 1);
-            document.getElementById('boss-hp').innerText = Math.max(0, boss.hp);
+    // Colisão: Tiros do Player -> Boss
+    playerProjectiles.forEach((p, i) => {
+        p.update(); p.draw();
+        if (checkCol(p, boss)) {
+            let damage = p.isSuper ? 15 : 1.5;
+            boss.hp -= damage;
+            if (!p.isSuper) {
+                player.specialMeter = Math.min(100, player.specialMeter + 4);
+                document.getElementById('special-bar').style.width = player.specialMeter + '%';
+            }
+            playerProjectiles.splice(i, 1);
+            document.getElementById('boss-hp').innerText = Math.floor(Math.max(0, boss.hp));
         }
-        if (b.x > canvas.width) playerBullets.splice(i, 1);
+        if (p.x > canvas.width) playerProjectiles.splice(i, 1);
     });
 
-    // Ataques do Boss -> Player
+    // Colisão: Tiros do Boss -> Player (DANO REAL)
     bossProjectiles.forEach((p, i) => {
         p.update(); p.draw();
         if (checkCol(p, player) && player.invincibility === 0) {
             player.hp -= 1;
-            player.invincibility = 60;
+            player.invincibility = 70; // Tempo piscando
             bossProjectiles.splice(i, 1);
             document.getElementById('hp').innerText = player.hp;
-            if (player.hp <= 0) { location.reload(); alert("VOCÊ PERDEU!"); }
+            if (player.hp <= 0) { alert("VOCÊ FOI DERROTADO!"); location.reload(); }
         }
-        if (p.x < -50 || p.y < -50 || p.y > canvas.height) bossProjectiles.splice(i, 1);
+        if (p.x < -50 || p.x > 850 || p.y > 500) bossProjectiles.splice(i, i);
     });
 
     player.draw();
     boss.draw();
 
     if (boss.hp > 0) requestAnimationFrame(loop);
-    else { ctx.fillStyle = "white"; ctx.font = "50px Arial"; ctx.fillText("KNOCKOUT!", 250, 200); }
+    else {
+        ctx.fillStyle = "white"; ctx.font = "60px Arial Black";
+        ctx.fillText("KNOCKOUT!", 200, 220);
+    }
 }
 
 loop();
