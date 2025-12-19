@@ -2,229 +2,129 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Cuphead Boss Fight - Final Version</title>
+    <title>Cuphead - Fix Dano</title>
     <style>
-        body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Arial Black', sans-serif; }
-        canvas { background: #2d5a27; border: 5px solid #fbff00; box-shadow: 0 0 40px rgba(255, 204, 0, 0.4); }
-        #ui { position: absolute; top: 20px; color: white; width: 800px; display: flex; justify-content: space-around; text-shadow: 2px 2px #000; pointer-events: none; }
-        .meter-bg { width: 150px; height: 15px; background: #333; border: 2px solid #fff; }
-        #special-bar { width: 0%; height: 100%; background: #00f2ff; transition: width 0.1s; }
+        body { margin: 0; background: #222; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: sans-serif; }
+        canvas { background: #4a7a3a; border: 4px solid #fff; }
+        #hud { position: absolute; top: 10px; color: white; font-weight: bold; font-size: 24px; text-shadow: 2px 2px #000; }
     </style>
 </head>
 <body>
-
-<div id="ui">
-    <div>HP: <span id="hp" style="color: #ff3e3e;">3</span></div>
-    <div>BOSS: <span id="boss-hp" style="color: #ffd700;">100</span>%</div>
-    <div>ESPECIAL (C): <div class="meter-bg"><div id="special-bar"></div></div></div>
-</div>
-<canvas id="game"></canvas>
+    <div id="hud">BOSS HP: <span id="bhp">100</span>%</div>
+    <canvas id="game"></canvas>
 
 <script>
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-canvas.width = 800;
-canvas.height = 450;
+canvas.width = 800; canvas.height = 450;
 
-const GRAVITY = 0.4; // Gravidade mais leve
 const keys = {};
+window.onkeydown = e => keys[e.code] = true;
+window.onkeyup = e => keys[e.code] = false;
 
-window.addEventListener('keydown', e => keys[e.code] = true);
-window.addEventListener('keyup', e => keys[e.code] = false);
+// --- CONFIGURAÇÕES DO PLAYER ---
+const player = {
+    x: 100, y: 300, w: 40, h: 50,
+    vx: 0, vy: 0, grounded: false,
+    shootTimer: 0
+};
 
-class Player {
-    constructor() {
-        this.x = 100; this.y = 300;
-        this.w = 35; this.h = 50;
-        this.vx = 0; this.vy = 0;
-        this.speed = 6;
-        this.jumpPower = -12.5; // Pulo mais forte
-        this.grounded = false;
-        this.hp = 3;
-        this.specialMeter = 0;
-        this.shootTimer = 0;
-        this.invincibility = 0;
+// --- CONFIGURAÇÕES DO BOSS ---
+const boss = {
+    x: 600, y: 100, w: 150, h: 300, // Área de colisão aumentada
+    hp: 100
+};
+
+const bullets = [];
+
+function checkCollision(r1, r2) {
+    return r1.x < r2.x + r2.w &&
+           r1.x + (r1.w || 10) > r2.x &&
+           r1.y < r2.y + r2.h &&
+           r1.y + (r1.h || 10) > r2.y;
+}
+
+function update() {
+    // Movimento Player
+    if (keys['ArrowLeft']) player.vx = -5;
+    else if (keys['ArrowRight']) player.vx = 5;
+    else player.vx = 0;
+
+    if (keys['KeyZ'] && player.grounded) {
+        player.vy = -13;
+        player.grounded = false;
     }
 
-    update() {
-        if (keys['ArrowLeft']) this.vx = -this.speed;
-        else if (keys['ArrowRight']) this.vx = this.speed;
-        else this.vx = 0;
+    player.vy += 0.6; // Gravidade
+    player.x += player.vx;
+    player.y += player.vy;
 
-        if (keys['KeyZ'] && this.grounded) {
-            this.vy = this.jumpPower;
-            this.grounded = false;
+    if (player.y + player.h > 400) {
+        player.y = 400 - player.h;
+        player.vy = 0;
+        player.grounded = true;
+    }
+
+    // TIRO (Tecla X)
+    if (keys['KeyX'] && player.shootTimer <= 0) {
+        bullets.push({ x: player.x + player.w, y: player.y + 20, w: 15, h: 10 });
+        player.shootTimer = 10; // Cadência de tiro
+    }
+    if (player.shootTimer > 0) player.shootTimer--;
+
+    // LÓGICA DAS BALAS E DANO
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        bullets[i].x += 10;
+
+        // VERIFICAÇÃO DE DANO (MUITO IMPORTANTE)
+        if (checkCollision(bullets[i], boss)) {
+            boss.hp -= 2; // Tira 2% de vida por tiro
+            document.getElementById('bhp').innerText = Math.max(0, boss.hp);
+            bullets.splice(i, 1); // Remove a bala ao colidir
+            continue;
         }
 
-        this.vy += GRAVITY;
-        this.x += this.vx;
-        this.y += this.vy;
-
-        // Chão sólido
-        if (this.y + this.h > canvas.height - 40) {
-            this.y = canvas.height - 40 - this.h;
-            this.vy = 0;
-            this.grounded = true;
-        }
-
-        if (this.x < 0) this.x = 0;
-        if (this.x > 500) this.x = 500;
-        if (this.shootTimer > 0) this.shootTimer--;
-        if (this.invincibility > 0) this.invincibility--;
-    }
-
-    draw() {
-        ctx.save();
-        if (this.invincibility > 0) ctx.globalAlpha = 0.5;
-        ctx.fillStyle = '#ff0000'; // Corpo Cuphead
-        ctx.fillRect(this.x, this.y, this.w, this.h);
-        ctx.fillStyle = '#fff'; // Cabeça
-        ctx.fillRect(this.x - 5, this.y - 12, this.w + 10, 18);
-        ctx.restore();
+        // Remove bala se sair da tela
+        if (bullets[i].x > canvas.width) bullets.splice(i, 1);
     }
 }
 
-class Boss {
-    constructor() {
-        this.x = 580; this.y = 80;
-        this.w = 180; this.h = 300;
-        this.hp = 100;
-        this.attackTimer = 0;
-    }
-
-    update() {
-        this.attackTimer++;
-        if (this.attackTimer % 70 === 0) this.shootLeaf();
-    }
-
-    shootLeaf() {
-        // Atira folha que segue o jogador
-        const angle = Math.atan2(player.y - this.y - 100, player.x - this.x);
-        bossProjectiles.push(new Projectile(this.x, this.y + 100, Math.cos(angle) * 5, Math.sin(angle) * 5, '#46aa2d', 20));
-    }
-
-    draw() {
-        ctx.fillStyle = '#ff9100'; // Pétalas
-        ctx.beginPath();
-        ctx.arc(this.x + 90, this.y + 90, 85, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#f7e442'; // Rosto
-        ctx.fillRect(this.x + 50, this.y + 50, 80, 80);
-        ctx.fillStyle = '#225a1f'; // Caule
-        ctx.fillRect(this.x + 80, this.y + 175, 25, 250);
-    }
-}
-
-class Projectile {
-    constructor(x, y, vx, vy, color, size, isSuper = false) {
-        this.x = x; this.y = y;
-        this.vx = vx; this.vy = vy;
-        this.color = color;
-        this.size = size;
-        this.isSuper = isSuper;
-    }
-    update() { this.x += this.vx; this.y += this.vy; }
-    draw() {
-        ctx.fillStyle = this.color;
-        ctx.shadowBlur = this.isSuper ? 15 : 0;
-        ctx.shadowColor = this.color;
-        ctx.fillRect(this.x, this.y, this.size, this.size);
-        ctx.shadowBlur = 0;
-    }
-}
-
-const player = new Player();
-const boss = new Boss();
-const playerProjectiles = [];
-const bossProjectiles = [];
-
-// Plataformas em alturas acessíveis
-const platforms = [
-    {x: 70, y: 310, w: 100, h: 15},
-    {x: 220, y: 240, w: 100, h: 15},
-    {x: 370, y: 310, w: 100, h: 15}
-];
-
-function checkCol(a, b) {
-    const bw = b.w || b.size;
-    const bh = b.h || b.size;
-    return a.x < b.x + bw && a.x + a.w > b.x && a.y < b.y + bh && a.y + a.h > b.y;
-}
-
-function loop() {
+function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Fundo/Grama
-    ctx.fillStyle = '#1e3d14';
-    ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+    // Chão
+    ctx.fillStyle = '#222';
+    ctx.fillRect(0, 400, canvas.width, 50);
 
-    // Plataformas
-    ctx.fillStyle = '#ff69b4';
-    platforms.forEach(p => {
-        ctx.fillRect(p.x, p.y, p.w, p.h);
-        if (player.vy > 0 && checkCol(player, p) && (player.y + player.h) < p.y + 18) {
-            player.y = p.y - player.h;
-            player.vy = 0;
-            player.grounded = true;
-        }
-    });
+    // Desenha Player
+    ctx.fillStyle = 'red';
+    ctx.fillRect(player.x, player.y, player.w, player.h);
 
-    // ATAQUES PLAYER
-    if (keys['KeyX'] && player.shootTimer === 0) {
-        playerProjectiles.push(new Projectile(player.x + player.w, player.y + 15, 12, 0, '#00f2ff', 10));
-        player.shootTimer = 10;
-    }
+    // Desenha Boss (Área de colisão visível em laranja para teste)
+    ctx.fillStyle = 'orange';
+    ctx.fillRect(boss.x, boss.y, boss.w, boss.h); 
     
-    // ESPECIAL (Tecla C)
-    if (keys['KeyC'] && player.specialMeter >= 100) {
-        playerProjectiles.push(new Projectile(player.x + player.w, player.y - 10, 15, 0, '#fff', 40, true));
-        player.specialMeter = 0;
-        document.getElementById('special-bar').style.width = '0%';
-    }
+    // Rosto do Boss (estético)
+    ctx.fillStyle = 'yellow';
+    ctx.fillRect(boss.x + 40, boss.y + 40, 70, 70);
 
-    player.update();
-    boss.update();
+    // Desenha Balas
+    ctx.fillStyle = 'cyan';
+    bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
 
-    // Colisão: Tiros do Player -> Boss
-    playerProjectiles.forEach((p, i) => {
-        p.update(); p.draw();
-        if (checkCol(p, boss)) {
-            let damage = p.isSuper ? 15 : 1.5;
-            boss.hp -= damage;
-            if (!p.isSuper) {
-                player.specialMeter = Math.min(100, player.specialMeter + 4);
-                document.getElementById('special-bar').style.width = player.specialMeter + '%';
-            }
-            playerProjectiles.splice(i, 1);
-            document.getElementById('boss-hp').innerText = Math.floor(Math.max(0, boss.hp));
-        }
-        if (p.x > canvas.width) playerProjectiles.splice(i, 1);
-    });
-
-    // Colisão: Tiros do Boss -> Player (DANO REAL)
-    bossProjectiles.forEach((p, i) => {
-        p.update(); p.draw();
-        if (checkCol(p, player) && player.invincibility === 0) {
-            player.hp -= 1;
-            player.invincibility = 70; // Tempo piscando
-            bossProjectiles.splice(i, 1);
-            document.getElementById('hp').innerText = player.hp;
-            if (player.hp <= 0) { alert("VOCÊ FOI DERROTADO!"); location.reload(); }
-        }
-        if (p.x < -50 || p.x > 850 || p.y > 500) bossProjectiles.splice(i, i);
-    });
-
-    player.draw();
-    boss.draw();
-
-    if (boss.hp > 0) requestAnimationFrame(loop);
-    else {
-        ctx.fillStyle = "white"; ctx.font = "60px Arial Black";
-        ctx.fillText("KNOCKOUT!", 200, 220);
+    if (boss.hp > 0) {
+        requestAnimationFrame(() => {
+            update();
+            draw();
+        });
+    } else {
+        ctx.fillStyle = "white";
+        ctx.font = "50px Arial";
+        ctx.fillText("KNOCKOUT!", 250, 200);
     }
 }
 
-loop();
+draw();
 </script>
 </body>
 </html>
