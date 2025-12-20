@@ -2,10 +2,10 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Floral Fury - Versão Estável</title>
+    <title>Floral Fury </title>
     <style>
         body { margin: 0; background: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Arial Black', sans-serif; }
-        canvas { background: #5c8cae; border: 6px solid #222; box-shadow: 0 0 50px #000; image-rendering: pixelated; }
+        canvas { background: #5c8cae; border: 6px solid #222; box-shadow: 0 0 50px #000; }
         #hud { position: absolute; top: 20px; left: 20px; color: #ff3e3e; font-size: 24px; text-shadow: 2px 2px #000; display: none; z-index: 10; }
     </style>
 </head>
@@ -20,7 +20,7 @@ const ctx = canvas.getContext('2d');
 canvas.width = 800; canvas.height = 450;
 
 let gameState = 'MENU';
-let animationId; // Para controlar o loop e evitar múltiplas instâncias
+let animationId;
 const keys = {};
 
 window.addEventListener('keydown', e => {
@@ -32,21 +32,18 @@ window.addEventListener('keyup', e => keys[e.code] = false);
 let player, boss, pBullets, bBullets, platforms;
 
 function restartGame() {
-    // Cancela o loop anterior antes de começar um novo para evitar lentidão
     if (animationId) cancelAnimationFrame(animationId);
 
     player = {
         x: 100, y: 300, w: 35, h: 50, vx: 0, vy: 0, 
-        speed: 5, jump: -14, grounded: false, hp: 3,
+        speed: 8, // Aumentado de 5 para 8
+        jump: -16, // Aumentado para compensar a gravidade
+        grounded: false, hp: 3,
         shootTimer: 0, invul: 0, dashTimer: 0, isDashing: false
     };
     
-    boss = { x: 550, y: 70, w: 180, h: 160, hp: 100, phase: 1, attackTimer: 0 };
-    
-    // Limpa os arrays para liberar memória
-    pBullets = []; 
-    bBullets = [];
-    
+    boss = { x: 550, y: 70, w: 180, h: 160, hp: 150, phase: 1, attackTimer: 0 };
+    pBullets = []; bBullets = [];
     platforms = [
         {x: 80, y: 310, w: 100, h: 15},
         {x: 230, y: 230, w: 100, h: 15},
@@ -55,9 +52,6 @@ function restartGame() {
 
     gameState = 'PLAYING';
     document.getElementById('hud').style.display = 'block';
-    document.getElementById('hp-val').innerText = player.hp;
-    document.getElementById('boss-lvl').innerText = "FASE 1";
-    
     gameLoop();
 }
 
@@ -69,16 +63,16 @@ function checkRectCollision(a, b) {
 function update() {
     if (gameState !== 'PLAYING') return;
 
-    // Dash
+    // Dash Turbo (C)
     if (keys['KeyC'] && player.dashTimer <= 0) {
         player.isDashing = true;
-        player.dashTimer = 40;
+        player.dashTimer = 30; // Cooldown menor
         player.invul = 15;
     }
 
     if (player.isDashing) {
-        player.vx = 15;
-        if (player.dashTimer < 25) player.isDashing = false;
+        player.vx = 22; // Velocidade de dash aumentada
+        if (player.dashTimer < 18) player.isDashing = false;
     } else {
         if (keys['ArrowLeft']) player.vx = -player.speed;
         else if (keys['ArrowRight']) player.vx = player.speed;
@@ -87,17 +81,16 @@ function update() {
 
     if (player.dashTimer > 0) player.dashTimer--;
 
-    // Pulo
+    // Pulo mais rápido
     if ((keys['Space'] || keys['KeyZ']) && player.grounded) {
         player.vy = player.jump;
         player.grounded = false;
     }
 
-    player.vy += 0.7;
+    player.vy += 1.0; // Gravidade aumentada (queda mais rápida)
     player.x += player.vx;
     player.y += player.vy;
 
-    // Colisões básicas
     if (player.y + player.h > canvas.height - 40) {
         player.y = canvas.height - 40 - player.h; player.vy = 0; player.grounded = true;
     }
@@ -108,54 +101,50 @@ function update() {
         }
     });
 
-    // Tiros Player
+    // Tiro Turbo (X)
     if (keys['KeyX'] && player.shootTimer <= 0) {
         pBullets.push({x: player.x + player.w, y: player.y + 15, size: 8});
-        player.shootTimer = 10;
+        player.shootTimer = 6; // Cadência muito maior (antes era 10)
     }
     if (player.shootTimer > 0) player.shootTimer--;
 
-    // Update e Limpeza de Tiros Player
     for (let i = pBullets.length - 1; i >= 0; i--) {
-        pBullets[i].x += 12;
+        pBullets[i].x += 18; // Tiro voa mais rápido
         if (checkRectCollision(pBullets[i], boss)) {
-            boss.hp -= 1.2;
+            boss.hp -= 1.0;
             pBullets.splice(i, 1);
             continue;
         }
         if (pBullets[i].x > canvas.width) pBullets.splice(i, 1);
     }
 
-    // Boss Fases
+    // Boss Agressivo
     boss.attackTimer++;
-    if (boss.hp < 66 && boss.phase === 1) { boss.phase = 2; document.getElementById('boss-lvl').innerText = "FASE 2"; }
-    if (boss.hp < 33 && boss.phase === 2) { boss.phase = 3; document.getElementById('boss-lvl').innerText = "FASE FINAL"; }
+    if (boss.hp < 100 && boss.phase === 1) { boss.phase = 2; document.getElementById('boss-lvl').innerText = "FASE 2"; }
+    if (boss.hp < 50 && boss.phase === 2) { boss.phase = 3; document.getElementById('boss-lvl').innerText = "FASE FINAL"; }
 
-    // Ataques Boss
-    if (boss.phase === 1 && boss.attackTimer % 90 === 0) {
-        bBullets.push({x: boss.x, y: 150, vx: -6, vy: 0, size: 20, color: 'orange'});
+    // Ataques mais rápidos
+    if (boss.phase === 1 && boss.attackTimer % 60 === 0) {
+        bBullets.push({x: boss.x, y: 150, vx: -10, vy: 0, size: 20, color: 'orange'});
     } 
-    else if (boss.phase === 2 && boss.attackTimer % 70 === 0) {
+    else if (boss.phase === 2 && boss.attackTimer % 45 === 0) {
         let angle = Math.atan2(player.y - 150, player.x - boss.x);
-        bBullets.push({x: boss.x, y: 150, vx: Math.cos(angle)*7, vy: Math.sin(angle)*7, size: 15, color: 'yellow'});
+        bBullets.push({x: boss.x, y: 150, vx: Math.cos(angle)*11, vy: Math.sin(angle)*11, size: 15, color: 'yellow'});
     }
-    else if (boss.phase === 3 && boss.attackTimer % 50 === 0) {
-        bBullets.push({x: player.x, y: -20, vx: 0, vy: 8, size: 25, color: '#ff00ff'});
+    else if (boss.phase === 3 && boss.attackTimer % 30 === 0) {
+        bBullets.push({x: player.x, y: -20, vx: 0, vy: 12, size: 25, color: '#ff00ff'});
     }
 
-    // Update e Limpeza de Tiros Boss
     for (let i = bBullets.length - 1; i >= 0; i--) {
         bBullets[i].x += bBullets[i].vx;
         bBullets[i].y += bBullets[i].vy;
         
         if (checkRectCollision(bBullets[i], player) && player.invul <= 0) {
-            player.hp--; player.invul = 60;
+            player.hp--; player.invul = 50;
             document.getElementById('hp-val').innerText = player.hp;
             bBullets.splice(i, 1);
             continue;
         }
-        
-        // Remove se sair muito da tela (Limpeza de memória)
         if (bBullets[i].x < -100 || bBullets[i].x > canvas.width + 100 || bBullets[i].y > canvas.height + 100) {
             bBullets.splice(i, 1);
         }
@@ -168,8 +157,6 @@ function update() {
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Fundo e Chão
     ctx.fillStyle = '#5c8cae'; ctx.fillRect(0,0,800,450);
     ctx.fillStyle = '#4e7a2a'; ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
 
@@ -180,18 +167,12 @@ function draw() {
     } 
     else if (gameState === 'PLAYING') {
         ctx.fillStyle = '#ff69b4'; platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
-        
-        // Boss
         ctx.fillStyle = '#2d5a27'; ctx.fillRect(boss.x + 80, 230, 30, 250); 
         ctx.fillStyle = boss.phase === 3 ? '#8b0000' : '#ff8c00';
         ctx.beginPath(); ctx.arc(boss.x + 90, 150, 80, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#f7e442'; ctx.fillRect(boss.x + 50, 110, 80, 80);
-
-        // Player
         ctx.fillStyle = player.invul % 4 > 1 ? 'transparent' : (player.isDashing ? 'white' : 'red');
         ctx.fillRect(player.x, player.y, player.w, player.h);
-
-        // Tiros
         ctx.fillStyle = '#00f2ff'; pBullets.forEach(b => ctx.fillRect(b.x, b.y, b.size, b.size));
         bBullets.forEach(b => { ctx.fillStyle = b.color; ctx.fillRect(b.x, b.y, b.size, b.size); });
     } 
@@ -200,7 +181,6 @@ function draw() {
         ctx.fillStyle = gameState === 'GAMEOVER' ? 'red' : 'gold';
         ctx.textAlign = 'center'; ctx.font = '60px Arial Black';
         ctx.fillText(gameState === 'GAMEOVER' ? 'GAME OVER' : 'KNOCKOUT!', 400, 200);
-        ctx.fillStyle = 'white'; ctx.font = '20px Arial';
         ctx.fillText('PRESS ENTER TO RESTART', 400, 280);
     }
 }
@@ -211,7 +191,6 @@ function gameLoop() {
     animationId = requestAnimationFrame(gameLoop);
 }
 
-// Inicia no Menu
 draw(); 
 </script>
 </body>
