@@ -19,7 +19,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 canvas.width = 800; canvas.height = 450;
 
-let gameState = 'MENU'; // MENU, PLAYING, GAMEOVER, WIN
+let gameState = 'MENU';
 const keys = {};
 
 window.addEventListener('keydown', e => {
@@ -28,7 +28,6 @@ window.addEventListener('keydown', e => {
 });
 window.addEventListener('keyup', e => keys[e.code] = false);
 
-// --- Entidades ---
 let player, boss, pBullets, bBullets, platforms;
 
 function restartGame() {
@@ -37,7 +36,8 @@ function restartGame() {
         speed: 5, jump: -14, grounded: false, hp: 3,
         shootTimer: 0, invul: 0, dashTimer: 0, isDashing: false
     };
-    boss = { x: 550, y: 100, w: 180, h: 300, hp: 100, phase: 1, attackTimer: 0 };
+    // A hitbox do Boss agora é focada na cabeça (x, y, w, h da parte superior)
+    boss = { x: 550, y: 70, w: 180, h: 160, hp: 100, phase: 1, attackTimer: 0 };
     pBullets = []; bBullets = [];
     platforms = [
         {x: 80, y: 310, w: 100, h: 15},
@@ -57,15 +57,14 @@ function checkRectCollision(a, b) {
 function update() {
     if (gameState !== 'PLAYING') return;
 
-    // --- Movimentação e Dash (C) ---
     if (keys['KeyC'] && player.dashTimer <= 0) {
         player.isDashing = true;
-        player.dashTimer = 40; // Cooldown
-        player.invul = 15; // Invencível durante o início do dash
+        player.dashTimer = 40;
+        player.invul = 15;
     }
 
     if (player.isDashing) {
-        player.vx = 15; // Impulso rápido para frente
+        player.vx = 15;
         if (player.dashTimer < 25) player.isDashing = false;
     } else {
         if (keys['ArrowLeft']) player.vx = -player.speed;
@@ -75,7 +74,6 @@ function update() {
 
     if (player.dashTimer > 0) player.dashTimer--;
 
-    // Pulo
     if ((keys['Space'] || keys['KeyZ']) && player.grounded) {
         player.vy = player.jump;
         player.grounded = false;
@@ -85,7 +83,6 @@ function update() {
     player.x += player.vx;
     player.y += player.vy;
 
-    // Colisões Chão e Plataforma
     if (player.y + player.h > canvas.height - 40) {
         player.y = canvas.height - 40 - player.h; player.vy = 0; player.grounded = true;
     }
@@ -95,7 +92,6 @@ function update() {
         }
     });
 
-    // Tiro (X)
     if (keys['KeyX'] && player.shootTimer <= 0) {
         pBullets.push({x: player.x + player.w, y: player.y + 15, size: 8});
         player.shootTimer = 10;
@@ -104,18 +100,18 @@ function update() {
 
     pBullets.forEach((b, i) => {
         b.x += 12;
+        // Hitbox agora só valida impacto se atingir a área da cabeça definida no objeto boss
         if (checkRectCollision(b, boss)) {
             boss.hp -= 1.2;
             pBullets.splice(i, 1);
         }
+        if (b.x > canvas.width) pBullets.splice(i, 1);
     });
 
-    // --- Lógica do Boss (3 Fases) ---
     boss.attackTimer++;
     if (boss.hp < 66 && boss.phase === 1) { boss.phase = 2; document.getElementById('boss-lvl').innerText = "FASE 2"; }
     if (boss.hp < 33 && boss.phase === 2) { boss.phase = 3; document.getElementById('boss-lvl').innerText = "FASE FINAL"; }
 
-    // Ataques por Fase
     if (boss.phase === 1 && boss.attackTimer % 90 === 0) {
         bBullets.push({x: boss.x, y: 150, vx: -6, vy: 0, size: 20, color: 'orange'});
     } 
@@ -124,7 +120,7 @@ function update() {
         bBullets.push({x: boss.x, y: 150, vx: Math.cos(angle)*7, vy: Math.sin(angle)*7, size: 15, color: 'yellow'});
     }
     else if (boss.phase === 3 && boss.attackTimer % 50 === 0) {
-        bBullets.push({x: player.x, y: 0, vx: 0, vy: 8, size: 25, color: '#ff00ff'}); // Sementes que caem
+        bBullets.push({x: player.x, y: 0, vx: 0, vy: 8, size: 25, color: '#ff00ff'});
     }
 
     bBullets.forEach((b, i) => {
@@ -134,17 +130,16 @@ function update() {
             document.getElementById('hp-val').innerText = player.hp;
             bBullets.splice(i, 1);
         }
-        if (player.hp <= 0) gameState = 'GAMEOVER';
+        if (b.x < -50 || b.y > canvas.height) bBullets.splice(i, 1);
     });
 
     if (player.invul > 0) player.invul--;
+    if (player.hp <= 0) gameState = 'GAMEOVER';
     if (boss.hp <= 0) gameState = 'WIN';
 }
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Grama fixa
     ctx.fillStyle = '#4e7a2a'; ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
 
     if (gameState === 'MENU') {
@@ -154,13 +149,19 @@ function draw() {
     } 
     else if (gameState === 'PLAYING') {
         ctx.fillStyle = '#ff69b4'; platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
-        // Boss
+        
+        // Desenho visual do Boss inspirado na imagem
+        ctx.fillStyle = '#2d5a27'; ctx.fillRect(boss.x + 80, 230, 30, 250); // Caule (Sem Hitbox)
+        
+        // Cabeça (Área com Hitbox)
         ctx.fillStyle = boss.phase === 3 ? '#8b0000' : '#ff8c00';
         ctx.beginPath(); ctx.arc(boss.x + 90, 150, 80, 0, Math.PI*2); ctx.fill();
         ctx.fillStyle = '#f7e442'; ctx.fillRect(boss.x + 50, 110, 80, 80);
+
         // Player
         ctx.fillStyle = player.invul % 4 > 1 ? 'transparent' : (player.isDashing ? 'white' : 'red');
         ctx.fillRect(player.x, player.y, player.w, player.h);
+
         // Tiros
         ctx.fillStyle = '#00f2ff'; pBullets.forEach(b => ctx.fillRect(b.x, b.y, b.size, b.size));
         bBullets.forEach(b => { ctx.fillStyle = b.color; ctx.fillRect(b.x, b.y, b.size, b.size); });
