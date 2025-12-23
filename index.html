@@ -2,10 +2,10 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Floral Fury: Enhanced Edition</title>
+    <title>Floral Fury: Sprite Edition</title>
     <style>
         body { margin: 0; background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        canvas { background: linear-gradient(to bottom, #1e3c72, #2a5298); border: 4px solid #fff; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        canvas { background: linear-gradient(to bottom, #1e3c72, #2a5298); border: 4px solid #fff; box-shadow: 0 0 30px rgba(0,0,0,0.5); image-rendering: pixelated; /* Mantém a arte nítida */ }
         #ui-layer { position: absolute; pointer-events: none; width: 800px; height: 450px; color: white; }
     </style>
 </head>
@@ -19,7 +19,37 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 canvas.width = 800; canvas.height = 450;
 
-// Configurações e Variáveis Globais
+// --- SISTEMA DE ASSETS (SPRITES) ---
+const sprites = {};
+
+// Função auxiliar para gerar imagens "falsas" (placeholders) para o código rodar sem arquivos externos.
+// QUANDO TIVER SUAS IMAGENS REAIS, SUBSTITUA ESTA PARTE.
+function generatePlaceholder(w, h, color, type = 'rect') {
+    const tmpCanvas = document.createElement('canvas');
+    tmpCanvas.width = w; tmpCanvas.height = h;
+    const tctx = tmpCanvas.getContext('2d');
+    tctx.fillStyle = color;
+    if (type === 'rect') tctx.fillRect(0, 0, w, h);
+    else if (type === 'circle') { tctx.beginPath(); tctx.arc(w/2, h/2, w/2, 0, Math.PI*2); tctx.fill(); }
+    else if (type === 'umbrella') { tctx.beginPath(); tctx.arc(w/2, h, w/2, Math.PI, 0); tctx.fill(); }
+    
+    const img = new Image();
+    img.src = tmpCanvas.toDataURL();
+    return img;
+}
+
+// --- CARREGAMENTO DE SPRITES (PLACEHOLDERS) ---
+// DICA: Para usar imagens reais, substitua estas linhas.
+// Ex: sprites.player = new Image(); sprites.player.src = 'player.png';
+sprites.player = generatePlaceholder(30, 45, '#ff4b2b');
+sprites.boss1Flower = generatePlaceholder(160, 160, '#ff8c00', 'circle');
+sprites.boss1Center = generatePlaceholder(60, 60, '#f7e442', 'circle');
+sprites.boss2UmbrellaTop = generatePlaceholder(140, 70, '#2e86c1', 'umbrella');
+sprites.platform = generatePlaceholder(100, 20, '#ff9a9e');
+sprites.bulletPlayer = generatePlaceholder(12, 6, '#00f2ff');
+
+
+// Configurações Globais
 let gameState = 'MENU';
 const keys = {};
 let particles = [];
@@ -36,18 +66,13 @@ window.addEventListener('keyup', e => keys[e.code] = false);
 let player, boss, umbrellaBoss, pBullets, bBullets, platforms;
 
 function createParticle(x, y, color) {
-    for(let i=0; i<5; i++) {
-        particles.push({
-            x, y, 
-            vx: (Math.random() - 0.5) * 10, 
-            vy: (Math.random() - 0.5) * 10, 
-            life: 20, 
-            color
-        });
+    for(let i=0; i<6; i++) {
+        particles.push({ x, y, vx: (Math.random()-0.5)*12, vy: (Math.random()-0.5)*12, life: 25, color });
     }
 }
 
 function restartGame() {
+    // Reset Posição Player
     player = { 
         x: 100, y: 300, w: 30, h: 45, vx: 0, vy: 0, 
         speed: 5, jump: -12, grounded: false, doubleJump: true,
@@ -56,257 +81,190 @@ function restartGame() {
     };
     
     boss = { 
-        x: 550, y: 70, w: 180, h: 160, hp: 100, maxHp: 100, 
+        x: 550, y: 70, w: 160, h: 160, hp: 100, maxHp: 100, 
         phase: 1, attackTimer: 0, active: true, isDying: false, 
         deathTimer: 0, hitFlash: 0 
     };
     
     umbrellaBoss = { 
-        x: 400, y: -200, w: 160, h: 120, hp: 150, maxHp: 150, 
+        x: 400, y: -200, w: 140, h: 100, hp: 150, maxHp: 150, 
         phase: 1, attackTimer: 0, active: false, vx: 3, 
         isDying: false, deathTimer: 0, rotation: 0, hitFlash: 0
     };
 
     pBullets = []; bBullets = [];
-    platforms = [{x: 80, y: 310, w: 120, h: 15}, {x: 340, y: 240, w: 120, h: 15}, {x: 600, y: 310, w: 120, h: 15}];
+    platforms = [{x: 80, y: 310, w: 120, h: 20}, {x: 340, y: 240, w: 120, h: 20}, {x: 600, y: 310, w: 120, h: 20}];
     gameState = 'PLAYING';
 }
 
+// --- CORREÇÃO DA TRANSIÇÃO ---
 function startSecondBoss() {
     player.hp = 3;
+    // FIX: Reseta a posição do jogador para o canto inferior esquerdo
+    player.x = 100;
+    player.y = 300;
+    player.vx = 0; player.vy = 0;
+
     umbrellaBoss.active = true;
     umbrellaBoss.y = 50;
+    bBullets = [];
     gameState = 'PLAYING';
 }
 
 function checkRectCollision(a, b) {
-    return a.x < b.x + (b.w || 10) && a.x + (a.w || 10) > b.x &&
-           a.y < b.y + (b.h || 10) && a.y + (a.h || 10) > b.y;
+    return a.x < b.x + b.w && a.x + a.w > b.x &&
+           a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 function update() {
     if (gameState !== 'PLAYING') return;
-
     if (shakeTime > 0) shakeTime--;
 
-    // Movimentação do Player
+    // --- Movimentação Player ---
     if (keys['ArrowLeft']) player.lastDir = -1;
     if (keys['ArrowRight']) player.lastDir = 1;
 
-    if (keys['KeyC'] && player.dashTimer <= 0) { 
-        player.isDashing = true; 
-        player.dashTimer = 35; 
-        player.invul = 15; 
-    }
+    if (keys['KeyC'] && player.dashTimer <= 0) { player.isDashing = true; player.dashTimer = 35; player.invul = 15; }
 
     if (player.isDashing) { 
-        player.vx = 15 * player.lastDir; 
-        if (player.dashTimer < 20) player.isDashing = false; 
+        player.vx = 15 * player.lastDir; if (player.dashTimer < 20) player.isDashing = false; 
     } else {
-        if (keys['ArrowLeft']) player.vx = -player.speed;
-        else if (keys['ArrowRight']) player.vx = player.speed;
-        else player.vx = 0;
+        if (keys['ArrowLeft']) player.vx = -player.speed; else if (keys['ArrowRight']) player.vx = player.speed; else player.vx = 0;
     }
-
     if (player.dashTimer > 0) player.dashTimer--;
 
-    // Pulo e Pulo Duplo
     if ((keys['Space'] || keys['KeyZ'])) {
-        if (player.grounded) {
-            player.vy = player.jump;
-            player.grounded = false;
-            player.doubleJump = true;
-            keys['Space'] = keys['KeyZ'] = false; // Evita trigger contínuo
-        } else if (player.doubleJump) {
-            player.vy = player.jump * 0.8;
-            player.doubleJump = false;
-            keys['Space'] = keys['KeyZ'] = false;
-            createParticle(player.x + 15, player.y + 40, 'white');
-        }
+        if (player.grounded) { player.vy = player.jump; player.grounded = false; player.doubleJump = true; keys['Space'] = keys['KeyZ'] = false; } 
+        else if (player.doubleJump) { player.vy = player.jump * 0.8; player.doubleJump = false; keys['Space'] = keys['KeyZ'] = false; createParticle(player.x + 15, player.y + 40, 'white'); }
     }
+    player.vy += 0.6; player.x += player.vx; player.y += player.vy;
 
-    player.vy += 0.6; 
-    player.x += player.vx; 
-    player.y += player.vy;
-
-    // Colisão Chão e Plataformas
-    if (player.y + player.h > canvas.height - 40) { 
-        player.y = canvas.height - 40 - player.h; 
-        player.vy = 0; player.grounded = true; 
-    }
-    
+    if (player.y + player.h > canvas.height - 40) { player.y = canvas.height - 40 - player.h; player.vy = 0; player.grounded = true; }
     platforms.forEach(p => { 
-        if (player.vy > 0 && checkRectCollision(player, p) && player.y + player.h < p.y + 20) { 
-            player.y = p.y - player.h; player.vy = 0; player.grounded = true; 
-        } 
+        if (player.vy > 0 && checkRectCollision(player, p) && player.y + player.h < p.y + 25) { player.y = p.y - player.h; player.vy = 0; player.grounded = true; } 
     });
 
-    // Tiro
+    // --- Tiro Player ---
     if (keys['KeyX'] && player.shootTimer <= 0) { 
-        pBullets.push({x: player.x + (player.lastDir === 1 ? player.w : 0), y: player.y + 20, vx: player.lastDir * 12}); 
-        player.shootTimer = 8; 
+        pBullets.push({x: player.x + (player.lastDir === 1 ? player.w : 0), y: player.y + 20, vx: player.lastDir * 12, w: 12, h: 6}); player.shootTimer = 8; 
     }
     if (player.shootTimer > 0) player.shootTimer--;
 
     pBullets.forEach((b, i) => {
-        b.x += b.vx;
-        let hit = false;
-        if (boss.active && !boss.isDying && checkRectCollision(b, boss)) { 
-            boss.hp -= 1.5; boss.hitFlash = 5; hit = true; 
-        } 
-        else if (umbrellaBoss.active && !umbrellaBoss.isDying && checkRectCollision(b, umbrellaBoss)) { 
-            umbrellaBoss.hp -= 1.8; umbrellaBoss.hitFlash = 5; hit = true; 
-        }
-        if (hit) {
-            createParticle(b.x, b.y, 'cyan');
-            pBullets.splice(i, 1);
-            shakeTime = 2;
-        }
+        b.x += b.vx; let hit = false;
+        if (boss.active && !boss.isDying && checkRectCollision(b, boss)) { boss.hp -= 1.5; boss.hitFlash = 5; hit = true; } 
+        else if (umbrellaBoss.active && !umbrellaBoss.isDying && checkRectCollision(b, umbrellaBoss)) { umbrellaBoss.hp -= 1.8; umbrellaBoss.hitFlash = 5; hit = true; }
+        if (hit) { createParticle(b.x, b.y, 'cyan'); pBullets.splice(i, 1); shakeTime = 3; }
         if (b.x > canvas.width || b.x < 0) pBullets.splice(i, 1);
     });
 
-    // Lógica Boss 1: Flor
+    // --- Lógica Bosses (Simplificada) ---
     if (boss.active) {
-        if (boss.isDying) {
-            boss.deathTimer--; boss.y += 5;
-            if (boss.deathTimer <= 0) { boss.active = false; bBullets = []; gameState = 'NEXT_BOSS'; }
-        } else {
-            boss.attackTimer++;
-            if (boss.hp < 66 && boss.phase === 1) boss.phase = 2;
-            if (boss.hp < 33 && boss.phase === 2) boss.phase = 3;
-            
-            if (boss.phase === 1 && boss.attackTimer % 80 === 0) bBullets.push({x: boss.x, y: 150, vx: -6, vy: 0, size: 20, color: '#ff7e5f'});
-            else if (boss.phase === 2 && boss.attackTimer % 60 === 0) {
-                let ang = Math.atan2(player.y - 150, player.x - boss.x);
-                bBullets.push({x: boss.x, y: 150, vx: Math.cos(ang)*7, vy: Math.sin(ang)*7, size: 15, color: '#feb47b'});
+        if (boss.isDying) { boss.deathTimer--; boss.y += 5; if (boss.deathTimer <= 0) { boss.active = false; bBullets = []; gameState = 'NEXT_BOSS'; }} 
+        else {
+            boss.attackTimer++; if (boss.hp < 66) boss.phase = 2; if (boss.hp < 33) boss.phase = 3;
+            if (boss.attackTimer % (boss.phase === 1 ? 80 : 50) === 0) {
+                 let target = (boss.phase === 3) ? {vx:0, vy:7, y:-20, x:player.x} : {vx:-6, vy:0, y:150, x:boss.x};
+                 bBullets.push({x: target.x, y: target.y, vx: target.vx, vy: target.vy, w: 20, h: 20, color: '#ff7e5f'});
             }
-            else if (boss.phase === 3 && boss.attackTimer % 40 === 0) bBullets.push({x: player.x, y: -20, vx: 0, vy: 7, size: 25, color: '#ff0080'});
-            
-            if (boss.hp <= 0) { boss.isDying = true; boss.deathTimer = 60; createParticle(boss.x+90, boss.y+80, 'yellow'); }
+            if (boss.hp <= 0) { boss.isDying = true; boss.deathTimer = 60; createParticle(boss.x+80, boss.y+80, 'gold'); }
         }
         if (boss.hitFlash > 0) boss.hitFlash--;
-    } 
-
-    // Lógica Boss 2: Umbrella
-    if (umbrellaBoss.active) {
-        if (umbrellaBoss.isDying) {
-            umbrellaBoss.deathTimer--; umbrellaBoss.rotation += 0.2; umbrellaBoss.y -= 2;
-            if (umbrellaBoss.deathTimer <= 0) gameState = 'WIN';
-        } else {
-            umbrellaBoss.attackTimer++;
-            if (umbrellaBoss.phase === 1) {
-                umbrellaBoss.x += umbrellaBoss.vx; umbrellaBoss.y = 50 + Math.sin(umbrellaBoss.attackTimer * 0.05) * 30;
-                if (umbrellaBoss.x > 600 || umbrellaBoss.x < 50) umbrellaBoss.vx *= -1;
-                if (umbrellaBoss.attackTimer % 50 === 0) bBullets.push({x: umbrellaBoss.x + 80, y: umbrellaBoss.y + 100, vx: 0, vy: 5, size: 12, color: '#00c6ff'});
-            } 
-            else if (umbrellaBoss.phase === 2) {
-                umbrellaBoss.y += (umbrellaBoss.attackTimer % 120 < 60) ? -2 : 8;
-                if (umbrellaBoss.y > 450) umbrellaBoss.y = -100;
-                if (umbrellaBoss.attackTimer % 30 === 0) bBullets.push({x: umbrellaBoss.x+80, y: umbrellaBoss.y+50, vx: -6, vy: 2, size: 10, color: 'white'});
-            }
-            if (umbrellaBoss.hp < 100 && umbrellaBoss.phase === 1) umbrellaBoss.phase = 2;
-            if (umbrellaBoss.hp <= 0) { umbrellaBoss.isDying = true; umbrellaBoss.deathTimer = 60; }
+    } else if (umbrellaBoss.active) {
+        if (umbrellaBoss.isDying) { umbrellaBoss.deathTimer--; umbrellaBoss.rotation += 0.2; umbrellaBoss.y -= 3; if (umbrellaBoss.deathTimer <= 0) gameState = 'WIN'; }
+        else {
+            umbrellaBoss.attackTimer++; if (umbrellaBoss.hp < 100) umbrellaBoss.phase = 2;
+            if (umbrellaBoss.phase === 1) { umbrellaBoss.x += umbrellaBoss.vx; umbrellaBoss.y = 50 + Math.sin(umbrellaBoss.attackTimer * 0.05) * 30; if (umbrellaBoss.x > 600 || umbrellaBoss.x < 50) umbrellaBoss.vx *= -1; }
+            else { umbrellaBoss.y += (umbrellaBoss.attackTimer % 120 < 60) ? -2 : 8; if (umbrellaBoss.y > 450) umbrellaBoss.y = -100; }
+            if (umbrellaBoss.attackTimer % 40 === 0) bBullets.push({x: umbrellaBoss.x+70, y: umbrellaBoss.y+50, vx: (Math.random()-0.5)*5, vy: 4, w: 15, h: 15, color: '#00c6ff'});
+            if (umbrellaBoss.hp <= 0) { umbrellaBoss.isDying = true; umbrellaBoss.deathTimer = 60; createParticle(umbrellaBoss.x+70, umbrellaBoss.y+50, 'white');}
         }
         if (umbrellaBoss.hitFlash > 0) umbrellaBoss.hitFlash--;
     }
 
-    // Balas Inimigas e Dano
     bBullets.forEach((b, i) => {
-        b.x += (b.vx || 0); b.y += (b.vy || 0);
-        if (checkRectCollision(b, player) && player.invul <= 0) { 
-            player.hp--; player.invul = 60; shakeTime = 15; bBullets.splice(i, 1); 
-        }
-        if (b.x < -100 || b.x > 900 || b.y > 500) bBullets.splice(i, 1);
+        b.x += b.vx; b.y += b.vy;
+        if (checkRectCollision(b, player) && player.invul <= 0) { player.hp--; player.invul = 60; shakeTime = 15; bBullets.splice(i, 1); }
+        if (b.y > 500 || b.x < -50 || b.x > 850) bBullets.splice(i, 1);
     });
 
-    // Partículas
-    particles.forEach((p, i) => {
-        p.x += p.vx; p.y += p.vy; p.life--;
-        if (p.life <= 0) particles.splice(i, 1);
-    });
-
-    if (player.invul > 0) player.invul--;
-    if (player.hp <= 0) gameState = 'GAMEOVER';
+    particles.forEach((p, i) => { p.x += p.vx; p.y += p.vy; p.life--; if (p.life <= 0) particles.splice(i, 1); });
+    if (player.invul > 0) player.invul--; if (player.hp <= 0) gameState = 'GAMEOVER';
 }
 
+// --- RENDERIZAÇÃO COM IMAGENS (ctx.drawImage) ---
 function draw() {
     ctx.save();
-    if (shakeTime > 0) ctx.translate(Math.random()*5 - 2, Math.random()*5 - 2);
+    if (shakeTime > 0) ctx.translate(Math.random()*6-3, Math.random()*6-3);
 
-    // Fundo
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    let grad = ctx.createLinearGradient(0,0,0,canvas.height);
-    grad.addColorStop(0, '#1a2a6c'); grad.addColorStop(1, '#b21f1f');
-    ctx.fillStyle = grad; ctx.fillRect(0,0,canvas.width, canvas.height);
-
-    // Chão
-    ctx.fillStyle = '#2d5a27'; ctx.fillRect(0, canvas.height - 40, canvas.width, 40);
+    let grad = ctx.createLinearGradient(0,0,0,canvas.height); grad.addColorStop(0, '#1a2a6c'); grad.addColorStop(1, '#b21f1f'); ctx.fillStyle = grad; ctx.fillRect(0,0,canvas.width, canvas.height);
+    ctx.fillStyle = '#2d5a27'; ctx.fillRect(0, canvas.height - 40, canvas.width, 40); // Chão simples
 
     if (gameState !== 'PLAYING') {
-        ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(0,0,800,450);
+        ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0,0,800,450);
         ctx.fillStyle = 'white'; ctx.textAlign = 'center'; ctx.font = 'bold 40px Arial';
-        if (gameState === 'MENU') ctx.fillText('FLORAL FURY', 400, 200);
-        if (gameState === 'NEXT_BOSS') ctx.fillText('STAGE CLEAR!', 400, 200);
+        if (gameState === 'MENU') ctx.fillText('FLORAL FURY: SPRITE ED.', 400, 200);
+        if (gameState === 'NEXT_BOSS') ctx.fillText('STAGE 1 CLEAR!', 400, 200);
         if (gameState === 'GAMEOVER') { ctx.fillStyle = '#ff4b2b'; ctx.fillText('YOU DIED', 400, 200); }
         if (gameState === 'WIN') { ctx.fillStyle = '#f9d423'; ctx.fillText('VICTORY!', 400, 200); }
-        ctx.font = '20px Arial'; ctx.fillStyle = 'white'; ctx.fillText('PRESS ENTER', 400, 260);
+        ctx.font = '20px Arial'; ctx.fillStyle = '#aaa'; ctx.fillText('PRESS ENTER', 400, 260);
     } 
     else {
-        // Plataformas
-        ctx.fillStyle = '#ff9a9e'; 
-        platforms.forEach(p => {
-            ctx.fillRect(p.x, p.y, p.w, p.h);
-            ctx.strokeStyle = 'white'; ctx.strokeRect(p.x, p.y, p.w, p.h);
-        });
+        // Desenhar Plataformas com Imagem
+        platforms.forEach(p => { ctx.drawImage(sprites.platform, p.x, p.y, p.w, p.h); });
         
-        // Desenho Boss 1
+        // Boss 1: Flor
         if (boss.active) {
-            ctx.fillStyle = boss.hitFlash > 0 ? 'white' : (boss.phase === 3 ? '#8b0000' : '#ff8c00');
-            ctx.beginPath(); ctx.arc(boss.x + 90, 150, 70 + Math.sin(Date.now()*0.01)*5, 0, Math.PI*2); ctx.fill();
-            ctx.fillStyle = '#f7e442'; ctx.fillRect(boss.x + 60, 120, 60, 60);
+            if (boss.hitFlash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.8; } // Efeito de Flash
+            ctx.drawImage(sprites.boss1Flower, boss.x, boss.y, boss.w, boss.h);
+            ctx.drawImage(sprites.boss1Center, boss.x + 50, boss.y + 50, 60, 60);
+            ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
         }
         
-        // Desenho Boss 2
+        // Boss 2: Guarda-Chuva (COM CORREÇÃO DO CABO)
         if (umbrellaBoss.active) {
             ctx.save();
-            ctx.translate(umbrellaBoss.x + 80, umbrellaBoss.y + 50);
+            ctx.translate(umbrellaBoss.x + 70, umbrellaBoss.y + 50);
             ctx.rotate(umbrellaBoss.rotation);
-            ctx.fillStyle = umbrellaBoss.hitFlash > 0 ? 'white' : '#2e86c1';
-            ctx.beginPath(); ctx.arc(0, 0, 70, Math.PI, 0); ctx.fill();
-            ctx.strokeStyle = 'white'; ctx.lineWidth = 4; ctx.stroke();
+            
+            // FIX: Desenha o cabo ANTES da parte de cima
+            ctx.strokeStyle = '#fff'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, 80); ctx.stroke();
+            
+            // Efeito de flash ao ser atingido
+             if (umbrellaBoss.hitFlash > 0) { ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.8; }
+            // Desenha a parte de cima do guarda-chuva (imagem)
+            // O offset -70, -70 é para centralizar a imagem no ponto de rotação
+            ctx.drawImage(sprites.boss2UmbrellaTop, -70, -70, 140, 70);
             ctx.restore();
         }
 
-        // Partículas
-        particles.forEach(p => {
-            ctx.fillStyle = p.color; ctx.globalAlpha = p.life/20;
-            ctx.fillRect(p.x, p.y, 4, 4);
-        });
-        ctx.globalAlpha = 1;
+        particles.forEach(p => { ctx.fillStyle = p.color; ctx.globalAlpha = p.life/25; ctx.fillRect(p.x, p.y, 5, 5); }); ctx.globalAlpha = 1;
 
-        // Player com efeito de Ghosting no Dash
+        // Player com Imagem
         if (player.invul % 4 < 2) {
-            ctx.fillStyle = player.isDashing ? 'rgba(255,255,255,0.5)' : '#ff4b2b';
-            ctx.fillRect(player.x, player.y, player.w, player.h);
+            ctx.save();
+            if(player.isDashing) ctx.globalAlpha = 0.6;
+            if(player.lastDir === -1) { ctx.scale(-1, 1); ctx.drawImage(sprites.player, -player.x - player.w, player.y, player.w, player.h); }
+            else { ctx.drawImage(sprites.player, player.x, player.y, player.w, player.h); }
+            ctx.restore();
         }
 
-        // Balas
-        pBullets.forEach(b => { ctx.fillStyle = '#00f2ff'; ctx.fillRect(b.x, b.y, 10, 6); });
-        bBullets.forEach(b => { ctx.fillStyle = b.color; ctx.fillRect(b.x, b.y, b.size, b.size); });
+        // Balas (Player = Imagem, Boss = Formas por enquanto)
+        pBullets.forEach(b => { ctx.drawImage(sprites.bulletPlayer, b.x, b.y, b.w, b.h); });
+        bBullets.forEach(b => { ctx.fillStyle = b.color; ctx.beginPath(); ctx.arc(b.x + b.w/2, b.y + b.h/2, b.w/2, 0, Math.PI*2); ctx.fill(); });
 
-        // HUD - Player HP (Corações)
+        // HUD
         for(let i=0; i<player.maxHp; i++) {
-            ctx.fillStyle = i < player.hp ? '#ff4b2b' : '#333';
-            ctx.beginPath(); ctx.arc(30 + i*30, 30, 10, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = i < player.hp ? '#ff4b2b' : '#444';
+            ctx.beginPath(); ctx.arc(30 + i*25, 30, 8, 0, Math.PI*2); ctx.fill();
         }
-
-        // HUD - Boss HP Bar
         let currentBoss = boss.active ? boss : umbrellaBoss;
         if (currentBoss.active) {
             let barW = 300;
-            ctx.fillStyle = '#333'; ctx.fillRect(400 - barW/2, 20, barW, 15);
-            ctx.fillStyle = '#f9d423'; ctx.fillRect(400 - barW/2, 20, (currentBoss.hp / currentBoss.maxHp) * barW, 15);
-            ctx.strokeStyle = 'white'; ctx.strokeRect(400 - barW/2, 20, barW, 15);
+            ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(400 - barW/2, 20, barW, 15);
+            ctx.fillStyle = currentBoss === boss ? '#f9d423' : '#00c6ff'; ctx.fillRect(400 - barW/2 + 2, 22, (currentBoss.hp / currentBoss.maxHp) * (barW-4), 11);
         }
     }
     ctx.restore();
